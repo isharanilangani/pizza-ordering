@@ -44,20 +44,45 @@ class OrderController extends Controller
         return response()->json($order->load('orderItems.pizza'), 201);
     }
 
-    public function show(Customer $order)
+    public function show($customerId)
     {
-        return $order->load('customer', 'orderItems.pizza');
+        // Retrieve the customer with their orders, order items, and associated pizzas
+        $customerOrders = Order::with(['orderItems.pizza'])
+            ->where('fk_customer_id', $customerId)
+            ->get();
+
+        // Return the orders for the given customer along with their items and pizzas
+            return response()->json($customerOrders);
     }
+
 
     public function update(Request $request, Order $order)
     {
         $request->validate([
-            'fk_customer_id' => 'exists:customers, pk_id',
-            'total_price' => 'numeric',
+            'fk_customer_id' => 'required|exists:customers,pk_id',
+            'total_price' => 'required|numeric',
+            'order_items' => 'required|array',
+            'order_items.*.pizza_id' => 'required|exists:pizzas,pk_id',
+            'order_items.*.quantity' => 'required|integer|min:1',
+            'order_items.*.price' => 'required|numeric',
         ]);
 
         $order->update($request->only(['fk_customer_id', 'total_price']));
-        return $order;
+
+        // Delete all existing order items for this order
+        $order->orderItems()->delete();
+
+        // Create new order items from the request
+        foreach ($request->order_items as $item) {
+            Order_Item::create([
+                'fk_order_id' => $order->pk_id,
+                'fk_pizza_id' => $item['pizza_id'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+            ]);
+        }
+
+        return response()->json($order->load('orderItems.pizza'), 201);
     }
 
     public function destroy(Order $order)
